@@ -48,3 +48,5 @@ pip install boto3            # AWS Translate
 pip install cryptography     # Required for secure AWS/OpenAI access
 pip install tkinter          # GUI (usually comes with Python)
 
+python translator_main_gui.py
+
