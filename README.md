@@ -41,3 +41,10 @@ A desktop application to translate structured JSON content into multiple languag
 ```bash
 git clone <your-repo-url>
 cd <your-repo-folder>
+
+pip install requests
+pip install openai           # OpenAI API
+pip install boto3            # AWS Translate
+pip install cryptography     # Required for secure AWS/OpenAI access
+pip install tkinter          # GUI (usually comes with Python)
+
