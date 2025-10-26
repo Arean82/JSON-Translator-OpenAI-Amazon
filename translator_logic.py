@@ -1,3 +1,5 @@
+# translator_logic.py
+
 import json
 import copy
 from translate_openai import openai_translate_batch, verify_openai_key
@@ -163,3 +165,4 @@ def translate(engine, creds, input_path, output_path, source_lang, target_langs,
 
 
     save_json(translated_data, output_path)
+
