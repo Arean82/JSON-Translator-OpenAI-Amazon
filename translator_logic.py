@@ -91,6 +91,19 @@ def verify_and_prepare_client(engine, creds):
         return verify_aws_credentials(creds.get("aws_access_key"), creds.get("aws_secret_key"))
     return None
 
+def remove_empty_texts(node):
+    if isinstance(node, dict):
+        keys_to_delete = []
+        for k, v in node.items():
+            if k == "text" and isinstance(v, str) and not v.strip():
+                keys_to_delete.append(k)
+            elif isinstance(v, (dict, list)):
+                remove_empty_texts(v)
+        for k in keys_to_delete:
+            del node[k]
+    elif isinstance(node, list):
+        for item in node:
+            remove_empty_texts(item)
 
 def translate(engine, creds, input_path, output_path, source_lang, target_langs, status_callback=None):
     data = load_json(input_path)
@@ -164,5 +177,9 @@ def translate(engine, creds, input_path, output_path, source_lang, target_langs,
         restore_original_lang(translated_data, original_en, source_lang)
 
 
-    save_json(translated_data, output_path)
+remove_empty_texts(translated_data)
+save_json(translated_data, output_path)   
+
+#save_json(translated_data, output_path)
+
 
