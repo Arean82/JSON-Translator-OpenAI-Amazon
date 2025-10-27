@@ -97,31 +97,8 @@ def get_credentials(root, engine_selection_var):
 # --------------------------
 # Start/Cancel Button Toggle
 # --------------------------
-#def toggle_translation_button(btn, is_running):
-#    btn.config(text="Cancel Translation" if is_running else "Start Translation")
-
-def toggle_translation_button(btn, running):
-    """
-    Toggle the Start/Stop translation button.
-    running=True  -> show Stop (orange with black text)
-    running=False -> show Start (green with white text)
-    """
-    if running:
-        btn.config(
-            text="Stop Translation",
-            bg="#ffa000",  # orange
-            fg="black",
-            state=NORMAL,
-            cursor="hand2"
-        )
-    else:
-        btn.config(
-            text="Start Translation",
-            bg="#2e7d32",  # green
-            fg="white",
-            state=NORMAL,
-            cursor="hand2"
-        )
+def toggle_translation_button(btn, is_running):
+    btn.config(text="Cancel Translation" if is_running else "Start Translation")
 
 
 # --------------------------
@@ -130,18 +107,19 @@ def toggle_translation_button(btn, running):
 def run_translation_thread(root, client_or_keys, creds, input_path, output_path, source_lang, target_langs,
                            status_label, status_text, engine, progress_bar=None, btn=None, mode="nonblog"):
     """
-    Worker thread for performing translation (Blog/Non-Blog).
+    Worker thread for performing translation, mode-aware (blog/nonblog).
     """
     global cancel_flag_global
     cancel_flag_global = False
 
     try:
-        # Select correct logic file
+        # ✅ Dynamically import correct translation logic
         if mode == "blog":
             from translator_blog_logic import translate
         else:
             from translator_logic import translate
 
+        # Count total text entries
         data = load_json(input_path)
         total_texts = len(collect_translatable_texts(data, source_lang)) * len(target_langs)
         progress_counter = 0
@@ -157,25 +135,23 @@ def run_translation_thread(root, client_or_keys, creds, input_path, output_path,
                 progress_bar.update()
             update_status_label(root, status_label, msg, status_text)
 
-        # --- Perform Translation ---
         translate(engine, creds, input_path, output_path, source_lang, target_langs, status_callback=status_cb)
 
-        # ✅ Mark success AFTER thread truly completes
-        root.after(0, lambda: status_label.config(text="✅ Translation completed successfully!", fg="green"))
+        update_status_label(root, status_label, f"✅ Translation complete!\nSaved as:\n{output_path}", status_text)
+        messagebox.showinfo("Success", f"Translation complete!\nSaved as:\n{output_path}")
 
     except Exception as e:
         if str(e) == "Translation canceled by user":
-            root.after(0, lambda: status_label.config(text="❌ Translation canceled.", fg="red"))
+            update_status_label(root, status_label, "❌ Translation canceled.", status_text)
+            messagebox.showinfo("Canceled", "Translation canceled by user.")
         else:
-            root.after(0, lambda: status_label.config(text=f"❌ Translation failed: {e}", fg="red"))
+            update_status_label(root, status_label, f"❌ Error: {e}", status_text)
+            messagebox.showerror("Error", str(e))
     finally:
-        # ✅ Reset everything back safely in main thread
-        def reset_ui():
+        if btn:
             toggle_translation_button(btn, False)
-            progress_bar.stop()
-            root.protocol("WM_DELETE_WINDOW", root.quit)  # re-enable window close
+        root.protocol("WM_DELETE_WINDOW", root.quit)
 
-        root.after(0, reset_ui)
 
 # --------------------------
 # Start or Cancel Translation
@@ -191,7 +167,7 @@ def start_or_cancel_translation(root, btn, file_path_var, source_lang_entry, tar
         source_lang = source_lang_entry.get().strip()
         target_langs = [x.strip() for x in target_langs_entry.get().split(",") if x.strip()]
         engine = engine_var.get()
-        mode = mode_var.get()
+        mode = mode_var.get()  # ✅ "blog" or "nonblog"
         folder = os.path.dirname(input_path)
 
         if not os.path.exists(input_path):
@@ -201,46 +177,41 @@ def start_or_cancel_translation(root, btn, file_path_var, source_lang_entry, tar
             messagebox.showerror("Error", "Enter at least one target language.")
             return
 
-        # Disable window close while translating
-        root.protocol("WM_DELETE_WINDOW", lambda: messagebox.showwarning(
-            "Translation in Progress",
-            "Please stop or wait for the translation to finish before closing."
-        ))
+        root.protocol("WM_DELETE_WINDOW", lambda: None)  # disable closing
 
         client_or_keys, creds = get_credentials(root, engine_var)
         if not client_or_keys:
             root.protocol("WM_DELETE_WINDOW", root.quit)
             return
 
-        # Prepare output
+        # ✅ Different output filenames per mode
+        #output_path = os.path.splitext(input_path)[0] + f"_{mode}_translated.json"
+
+        # ✅ Organize outputs into folders
         base_dir = os.path.dirname(input_path)
         base_name = os.path.basename(input_path)
-        output_dir = os.path.join(base_dir, "Blog" if mode == "blog" else "Non-Blog")
+
+        if mode == "blog":
+            output_dir = os.path.join(base_dir, "Blog")
+        else:
+            output_dir = os.path.join(base_dir, "Non-Blog")
+
         os.makedirs(output_dir, exist_ok=True)
 
-        output_path = os.path.join(
-            output_dir,
-            base_name if mode == "blog" else base_name.replace(".json", "_translated.json")
-        )
+        # ✅ Non-blog gets single file, blog creates per language internally
+        output_path = os.path.join(output_dir, base_name if mode == "blog" else base_name.replace(".json", "_translated.json"))
 
-        # --- Toggle button to "Stop" state ---
+
         toggle_translation_button(btn, True)
         progress_bar["value"] = 0
         progress_bar["maximum"] = 1
         progress_bar.update()
 
-        # Start translation thread
         thread = threading.Thread(
             target=run_translation_thread,
-            args=(root, client_or_keys, creds, input_path, output_path,
-                  source_lang, target_langs, status_label, status_text,
-                  engine, progress_bar, btn, mode)
+            args=(root, client_or_keys, creds, input_path, output_path, source_lang, target_langs,
+                  status_label, status_text, engine, progress_bar, btn, mode)
         )
         thread.start()
-
     else:
-        # --- Cancel translation ---
         cancel_flag_global = True
-        btn.config(state=DISABLED)  # prevent spam clicking
-        root.after(1000, lambda: btn.config(state=NORMAL))  # re-enable after 1s
-
