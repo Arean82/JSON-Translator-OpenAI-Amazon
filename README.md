@@ -1,10 +1,51 @@
 # 🈹 JSON Translator – OpenAI / Amazon
 
 A desktop application to translate structured JSON content into multiple languages using **OpenAI** or **Amazon Translate**.  
-It supports both **flat** and **deeply nested** JSON structures while preserving the hierarchy and formatting.  
-The tool provides **Blog** and **Non-Blog** modes, easy **language management**, and a **clean Tkinter GUI** interface.
+Now includes a separate **Engine Selector** window for credential management and a refined GUI workflow optimized for  
+**Windows**, **macOS**, and **Linux**.
 
 ---
+
+## 🚀 Features
+
+### 🌍 Multi-Language Translation
+- Translate JSON content into **multiple target languages** in one go.  
+- All target translations (e.g., `ar`, `fr`, `es`) are merged into one output JSON (Non-Blog mode)  
+  or exported as separate files (Blog mode).  
+- Manage target languages dynamically through a popup interface.  
+  - Default languages: Arabic (`ar`), French (`fr`), Spanish (`es`).
+
+---
+
+### 🧠 Dual-Window Workflow
+
+#### 🪟 1. Engine Selector (`engine_selector_gui.py`)
+- Choose your translation engine: **OpenAI** or **Amazon Translate**.  
+- Enter and save credentials to a local file (`api_credentials.json`) in the same folder as the app.  
+- Credentials never leave your device and are not stored in user profile folders.  
+- Once validated, click **Continue →** to open the translator interface.
+
+#### 🪟 2. Translator Main GUI (`translator_main_gui.py`)
+- Clean, modern Tkinter interface for JSON translation.  
+- Handles file selection, mode selection, and progress display.  
+- Detailed logs go to the **Messages** tab; the main window shows only final success/failure status.
+
+---
+
+### ⚙️ Smart Engine Credential Handling
+- **Local storage only** → `api_credentials.json` resides in the same directory as your `.py` or `.exe`.  
+- File format:
+  ```json
+  {
+    "openai": {
+      "openai_key": "sk-xxxxxxx"
+    },
+    "amazon": {
+      "aws_access_key": "AKIAXXXXXXX",
+      "aws_secret_key": "xxxxxxxxxxxxxxxx"
+    }
+  }
+
 
 ## 🚀 Features
 
@@ -142,13 +183,15 @@ data_es.json
 ## 🧩 File Structure Overview
 
 ```
-translator_main_gui.py         # GUI entry point
-translator_gui_functions.py    # File handling, threading, and progress logic
-translator_logic.py            # Non-Blog translation logic (multi-language merged)
-translator_blog_logic.py       # Blog mode logic (per-language export)
-translator_lang.py             # Language management and popup UI
-translate_openai.py            # OpenAI translation utilities
-translate_aws.py               # AWS Translate utilities
+engine_selector_gui.py        # Engine + credential setup window
+translator_main_gui.py        # Main translation GUI
+translator_gui_functions.py   # Threading, progress, button control
+translator_logic.py           # Non-Blog translation engine
+translator_blog_logic.py      # Blog translation engine
+translator_lang.py            # Language management popup
+translate_openai.py           # OpenAI translation utilities
+translate_aws.py              # AWS Translate utilities
+api_credentials.json          # Locally stored keys
 ```
 
 ---
@@ -175,7 +218,10 @@ AWS_SECRET_ACCESS_KEY=your-secret
 - Automatically skips empty or invalid `text` nodes for Amazon Translate.
 - Cleanly handles right-to-left scripts (Arabic, Hebrew) in JSON outputs.
 - Translation progress and completion messages are shown in the GUI.
-
+- Works seamlessly on Windows, macOS, and Linux.
+- Background threads keep the GUI responsive at all times.
+- Progress and error messages logged under “Messages”.
+- Start/Stop button color feedback adds clarity to long translations.
 ---
 
 ## 🪪 License
