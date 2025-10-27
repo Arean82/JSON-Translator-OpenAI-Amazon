@@ -54,7 +54,11 @@ def collect_translatable_texts(node, source_lang, path=(), engine="openai"):
                     )
 
             elif isinstance(value, dict) and source_lang in value and isinstance(value[source_lang], str):
-                texts.append((path + (key,), value[source_lang]))
+                text_value = value[source_lang]
+                # ⭐️ FIX for Amazon: Skip empty strings
+                if engine == "amazon" and not text_value:
+                    continue
+                texts.append((path + (key,), text_value))
             else:
                 texts.extend(collect_translatable_texts(value, source_lang, path + (key,), engine))
     elif isinstance(node, list):
@@ -91,7 +95,14 @@ def verify_and_prepare_client(engine, creds):
         return verify_aws_credentials(creds.get("aws_access_key"), creds.get("aws_secret_key"))
     return None
 
+# The first definition of remove_empty_texts (lines 48-69 in your original code) was removed.
+# Only the targeted, second definition is kept below.
+
 def remove_empty_texts(node):
+    """
+    Recursively remove entries where 'text' is an empty or whitespace-only string
+    from deeply nested dicts and lists.
+    """
     if isinstance(node, dict):
         keys_to_delete = []
         for k, v in node.items():
@@ -101,14 +112,24 @@ def remove_empty_texts(node):
                 remove_empty_texts(v)
         for k in keys_to_delete:
             del node[k]
+
     elif isinstance(node, list):
+        items_to_remove = []
         for item in node:
-            remove_empty_texts(item)
+            if isinstance(item, dict) and "text" in item and isinstance(item["text"], str) and not item["text"].strip():
+                items_to_remove.append(item)
+            elif isinstance(item, (dict, list)):
+                remove_empty_texts(item)
+        for item in items_to_remove:
+            node.remove(item)
+
 
 def translate(engine, creds, input_path, output_path, source_lang, target_langs, status_callback=None):
     data = load_json(input_path)
+    remove_empty_texts(data)  # ✅ Clean out empty strings
     # Preserve original English content for safety
     original_en = copy.deepcopy(data)
+    # The fix ensures collect_translatable_texts correctly excludes empty strings for 'amazon'
     texts_to_translate = collect_translatable_texts(data, source_lang, engine=engine)
 
     if not texts_to_translate:
@@ -131,14 +152,14 @@ def translate(engine, creds, input_path, output_path, source_lang, target_langs,
                 batch_translations = openai_translate_batch(creds["openai_key"], batch_texts, source_lang, target_lang)
             elif engine == "amazon":
                 batch_translations = amazon_translate_batch(creds["aws_access_key"], creds["aws_secret_key"],
-                                                            batch_texts, source_lang, target_lang)
+                                                             batch_texts, source_lang, target_lang)
             else:
                 raise ValueError("Unknown translation engine")
 
             all_translations.extend(batch_translations)
             if status_callback:
                 status_callback(f"{len(all_translations)}/{len(source_texts)} texts translated for {target_lang}",
-                                batch_count=len(batch_texts))
+                                 batch_count=len(batch_texts))
 
         # Apply translations back
         translated_data = apply_translations(translated_data, all_translations, paths, target_lang, source_lang)
@@ -176,8 +197,4 @@ def translate(engine, creds, input_path, output_path, source_lang, target_langs,
 
         restore_original_lang(translated_data, original_en, source_lang)
         remove_empty_texts(translated_data)
-        save_json(translated_data, output_path)   
-
-        #save_json(translated_data, output_path)
-
-
+        save_json(translated_data, output_path)
