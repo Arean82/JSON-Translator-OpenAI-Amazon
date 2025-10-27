@@ -1,3 +1,5 @@
+# JSON Translator Main GUI
+
 from tkinter import *
 from tkinter import ttk
 from translator_gui_functions import browse_file, start_or_cancel_translation, show_messages_popup

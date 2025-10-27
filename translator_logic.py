@@ -175,11 +175,9 @@ def translate(engine, creds, input_path, output_path, source_lang, target_langs,
                         restore_original_lang(item, backup[i], lang)
 
         restore_original_lang(translated_data, original_en, source_lang)
+        remove_empty_texts(translated_data)
+        save_json(translated_data, output_path)   
 
-
-remove_empty_texts(translated_data)
-save_json(translated_data, output_path)   
-
-#save_json(translated_data, output_path)
+        #save_json(translated_data, output_path)
 
 

@@ -47,37 +47,48 @@ def browse_file(file_path_var):
 # --------------------------
 # Credential Dialog
 # --------------------------
-def get_credentials(root, engine_selection_var, file_folder=None):
+def get_credentials(root, engine_selection_var):
+    """
+    Handles loading and validating credentials for the selected engine.
+    Automatically stores them in the application directory (same as .py/.exe).
+    """
     engine = engine_selection_var.get()
-    saved_engine, creds = load_credentials(file_folder) if file_folder else (None, None)
-    if saved_engine == engine and creds:
-        client_or_keys = verify_and_prepare_client(engine, creds)
-        if client_or_keys:
-            return client_or_keys, creds
-        else:
-            messagebox.showwarning("Credentials Invalid", f"Saved credentials for {engine} are invalid. Please enter again.")
+    saved_engine, creds = load_credentials()  # ✅ No folder needed
 
+    if saved_engine == engine and creds:
+        if verify_and_prepare_client(engine, creds):
+            return verify_and_prepare_client(engine, creds), creds
+        else:
+            messagebox.showwarning("Credentials Invalid", f"Saved credentials for {engine} are invalid. Please re-enter.")
+
+    # Prompt user if not saved or invalid
     if engine == "openai":
         key = simpledialog.askstring("OpenAI API Key", "Enter your OpenAI API Key:", show="*")
         if not key:
             return None, None
-        if not verify_and_prepare_client("openai", {"openai_key": key}):
-            messagebox.showerror("Invalid Key", "OpenAI key invalid.")
+        creds = {"openai_key": key}
+        if not verify_and_prepare_client(engine, creds):
+            messagebox.showerror("Invalid Key", "The provided OpenAI key is invalid.")
             return None, None
-        save_credentials("openai", {"openai_key": key}, file_folder)
-        return verify_and_prepare_client("openai", {"openai_key": key}), {"openai_key": key}
+        save_credentials(engine, creds)  # ✅ No folder
+        return verify_and_prepare_client(engine, creds), creds
 
     elif engine == "amazon":
         access = simpledialog.askstring("AWS Access Key", "Enter AWS Access Key ID:")
         secret = simpledialog.askstring("AWS Secret Key", "Enter AWS Secret Access Key:", show="*")
         if not access or not secret:
             return None, None
-        if not verify_and_prepare_client("amazon", {"aws_access_key": access, "aws_secret_key": secret}):
-            messagebox.showerror("Invalid Key", "AWS credentials invalid.")
+        creds = {"aws_access_key": access, "aws_secret_key": secret}
+        if not verify_and_prepare_client(engine, creds):
+            messagebox.showerror("Invalid Key", "The provided AWS credentials are invalid.")
             return None, None
-        save_credentials("amazon", {"aws_access_key": access, "aws_secret_key": secret}, file_folder)
-        return (access, secret), {"aws_access_key": access, "aws_secret_key": secret}
+        save_credentials(engine, creds)  # ✅ No folder
+        return (access, secret), creds
 
+    else:
+        messagebox.showerror("Error", "Unsupported translation engine.")
+        return None, None
+    
 # --------------------------
 # Start/Cancel Button Toggle
 # --------------------------
@@ -145,7 +156,9 @@ def start_or_cancel_translation(root, btn, file_path_var, source_lang_entry, tar
 
         root.protocol("WM_DELETE_WINDOW", lambda: None)  # disable closing
 
-        client_or_keys, creds = get_credentials(root, engine_var, folder)
+        #client_or_keys, creds = get_credentials(root, engine_var, folder)
+        client_or_keys, creds = get_credentials(root, engine_var)
+
         if not client_or_keys:
             root.protocol("WM_DELETE_WINDOW", root.quit)
             return
