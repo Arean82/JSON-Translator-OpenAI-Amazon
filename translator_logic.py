@@ -135,75 +135,85 @@ def remove_empty_texts(node):
 
 def translate(engine, creds, input_path, output_path, source_lang, target_langs, status_callback=None):
     data = load_json(input_path)
-    remove_empty_texts(data)  
-    original_en = copy.deepcopy(data) 
-    
+    remove_empty_texts(data)
+    original_en = copy.deepcopy(data)
+
     # 1. Collect ALL translatable texts and their paths
-    all_texts_to_translate = collect_translatable_texts(data, source_lang, engine=engine) 
-    
+    all_texts_to_translate = collect_translatable_texts(data, source_lang, engine=engine)
     if not all_texts_to_translate:
         if status_callback:
             status_callback("No translatable texts found.", batch_count=0)
         return
 
     all_paths, all_source_texts = zip(*all_texts_to_translate)
+
+    # ✅ Prepare base structure once (so multiple languages accumulate)
     translated_data = copy.deepcopy(data)
 
-    # 2. Filter out empty texts for the API call (avoid Amazon error)
+    # 2. Filter out empty texts for API calls
     paths_for_api = []
     texts_for_api = []
-    api_map = {} # Maps API path index back to original full paths index
-    
+    api_map = {}  # Maps API path index back to original index
+
     for i, (path, text) in enumerate(zip(all_paths, all_source_texts)):
-        # Only use non-empty strings for the API call
-        if text: 
+        if text:  # Only non-empty texts go to API
             paths_for_api.append(path)
             texts_for_api.append(text)
-            api_map[len(paths_for_api) - 1] = i # Map the API list index back to the full list index
+            api_map[len(paths_for_api) - 1] = i
 
+    # 3. Loop through each target language
     for target_lang in target_langs:
         if status_callback:
             status_callback(f"Translating to {target_lang}...", batch_count=0)
 
-        all_translations = [] # Stores translations for only the texts sent to the API
-        
-        # 3. Perform translation only on non-empty texts
+        all_translations = []
+
         if texts_for_api:
             for i in range(0, len(texts_for_api), BATCH_SIZE):
-                batch_texts = list(texts_for_api[i:i+BATCH_SIZE])
-                
+                batch_texts = list(texts_for_api[i:i + BATCH_SIZE])
+
                 if engine == "openai":
-                    batch_translations = openai_translate_batch(creds["openai_key"], batch_texts, source_lang, target_lang)
+                    batch_translations = openai_translate_batch(
+                        creds["openai_key"], batch_texts, source_lang, target_lang
+                    )
                 elif engine == "amazon":
-                    batch_translations = amazon_translate_batch(creds["aws_access_key"], creds["aws_secret_key"],
-                                                                 batch_texts, source_lang, target_lang)
+                    batch_translations = amazon_translate_batch(
+                        creds["aws_access_key"], creds["aws_secret_key"],
+                        batch_texts, source_lang, target_lang
+                    )
                 else:
                     raise ValueError("Unknown translation engine")
 
                 all_translations.extend(batch_translations)
                 if status_callback:
-                    status_callback(f"{len(all_translations)}/{len(texts_for_api)} texts translated for {target_lang}",
-                                     batch_count=len(batch_texts))
-        
-        # 4. Recombine: Build the final list of translations (including empty strings)
+                    status_callback(
+                        f"{len(all_translations)}/{len(texts_for_api)} texts translated for {target_lang}",
+                        batch_count=len(batch_texts)
+                    )
+
+        # 4. Merge back into structure
         final_translations = []
         api_index = 0
         for text in all_source_texts:
             if text:
-                # Use the translation from the API
                 final_translations.append(all_translations[api_index])
                 api_index += 1
             else:
-                # Use an empty string for the target language if source was empty
-                final_translations.append("") 
+                final_translations.append("")
 
-        # 5. Apply translations back using ALL paths and the final translations list
-        translated_data = apply_translations(translated_data, final_translations, all_paths, target_lang, source_lang)
-        
-        # FIX #3: Clone additionalContent AFTER translations to correct lang arrays
+        # 5. Apply translations ON TOP of previous ones
+        translated_data = apply_translations(
+            translated_data, final_translations, all_paths, target_lang, source_lang
+        )
+
+        # Clone additionalContent after translations
         def find_and_copy_content(node, source, target):
             if isinstance(node, dict):
-                if "additionalContent" in node and isinstance(node["additionalContent"], dict) and source in node["additionalContent"]:
+                if (
+                    "additionalContent" in node
+                    and isinstance(node["additionalContent"], dict)
+                    and source in node["additionalContent"]
+                ):
                     node["additionalContent"][target] = copy.deepcopy(node["additionalContent"][source])
                 for k, v in node.items():
                     if isinstance(v, (dict, list)):
@@ -214,12 +224,19 @@ def translate(engine, creds, input_path, output_path, source_lang, target_langs,
 
         find_and_copy_content(translated_data, source_lang, target_lang)
 
-        # Restore original 'en' content
+        # Restore original 'en' content each time
         def restore_original_lang(node, backup, lang):
             if isinstance(node, dict) and isinstance(backup, dict):
                 for k, v in node.items():
-                    if k == "additionalContent" and isinstance(v, dict) and lang in v and isinstance(backup.get("additionalContent", {}).get(lang), list):
-                        node["additionalContent"][lang] = copy.deepcopy(backup["additionalContent"][lang])
+                    if (
+                        k == "additionalContent"
+                        and isinstance(v, dict)
+                        and lang in v
+                        and isinstance(backup.get("additionalContent", {}).get(lang), list)
+                    ):
+                        node["additionalContent"][lang] = copy.deepcopy(
+                            backup["additionalContent"][lang]
+                        )
                     elif isinstance(v, dict) and k in backup:
                         restore_original_lang(v, backup[k], lang)
                     elif isinstance(v, list) and k in backup:
@@ -232,9 +249,13 @@ def translate(engine, creds, input_path, output_path, source_lang, target_langs,
                         restore_original_lang(item, backup[i], lang)
 
         restore_original_lang(translated_data, original_en, source_lang)
-        remove_empty_texts(translated_data)
-        
-        #save_json(translated_data, output_path)
-        output_dir = os.path.join(os.path.dirname(output_path), "Non-Blog")
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, os.path.basename(output_path))
+
+    # 6. Final cleanup and save once
+    remove_empty_texts(translated_data)
+    save_json(translated_data, output_path)
+
+    # Optional: final status
+    if status_callback:
+        status_callback(f"✅ Saved translated file: {output_path}", batch_count=0)
+
+    return translated_data
