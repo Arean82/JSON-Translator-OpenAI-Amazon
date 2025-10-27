@@ -1,5 +1,3 @@
-# translator_logic.py
-
 import json
 import copy
 from translate_openai import openai_translate_batch, verify_openai_key
@@ -19,9 +17,14 @@ def save_json(data, path):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def collect_texts_from_content_array(content_array, current_path, texts_output, source_lang, engine):
+    """
+    Collects 'text' fields inside structured content arrays.
+    It skips empty 'text' fields only for Amazon, as it rejects them.
+    """
     if isinstance(content_array, dict):
         if "text" in content_array and isinstance(content_array["text"], str):
             text_value = content_array["text"]
+            # Keep the check here to skip empty 'text' nodes inside content structures for Amazon
             if engine == "amazon" and not text_value:
                 return
             texts_output.append((current_path + ("text",), text_value))
@@ -35,12 +38,18 @@ def collect_texts_from_content_array(content_array, current_path, texts_output, 
                 collect_texts_from_content_array(item, current_path + (idx,), texts_output, source_lang, engine)
     return texts_output
 
+# ---
 
 def collect_translatable_texts(node, source_lang, path=(), engine="openai"):
+    """
+    Collects all language-specific texts (e.g., 'title': {'en': '...'}) and 
+    calls helper for nested content. This function now collects ALL paths, 
+    including those with empty strings, so the structure is preserved.
+    """
     texts = []
     if isinstance(node, dict):
         for key, value in node.items():
-            # ✅ FIX #1: Handle nested additionalContent correctly
+            # Handle nested additionalContent correctly
             if key == "additionalContent" and isinstance(value, dict) and source_lang in value and isinstance(value[source_lang], list):
                 for item_idx, item in enumerate(value[source_lang]):
                     texts.extend(
@@ -49,16 +58,14 @@ def collect_translatable_texts(node, source_lang, path=(), engine="openai"):
                             path + (key, source_lang, item_idx),
                             [],
                             source_lang,
-                            engine,
+                            engine, # Pass engine to helper, which handles its own skipping
                         )
                     )
 
+            # Collect language-specific fields (e.g., "title": {"en": "..."})
             elif isinstance(value, dict) and source_lang in value and isinstance(value[source_lang], str):
-                text_value = value[source_lang]
-                # ⭐️ FIX for Amazon: Skip empty strings
-                if engine == "amazon" and not text_value:
-                    continue
-                texts.append((path + (key,), text_value))
+                # We collect the path even if the text is empty!
+                texts.append((path + (key,), value[source_lang]))
             else:
                 texts.extend(collect_translatable_texts(value, source_lang, path + (key,), engine))
     elif isinstance(node, list):
@@ -77,9 +84,10 @@ def apply_translations(node, translations, paths, target_lang, source_lang):
                 ptr = ptr[key]
         final_key = path[-1]
 
-        # ✅ FIX #2: prevent language mixing — only update source_lang section
+        # FIX #2: prevent language mixing — only update source_lang section
         if isinstance(ptr, dict) and final_key in ptr and isinstance(ptr[final_key], dict):
             if source_lang in ptr[final_key]:
+                # This ensures {"en": "", "ar": ""} structure is created/updated
                 ptr[final_key][target_lang] = text
         elif isinstance(ptr, dict) and final_key == "text" and "text" in ptr:
             ptr["text"] = text
@@ -95,13 +103,12 @@ def verify_and_prepare_client(engine, creds):
         return verify_aws_credentials(creds.get("aws_access_key"), creds.get("aws_secret_key"))
     return None
 
-# The first definition of remove_empty_texts (lines 48-69 in your original code) was removed.
-# Only the targeted, second definition is kept below.
+# ---
 
 def remove_empty_texts(node):
     """
     Recursively remove entries where 'text' is an empty or whitespace-only string
-    from deeply nested dicts and lists.
+    from deeply nested dicts and lists. (The targeted version is kept)
     """
     if isinstance(node, dict):
         keys_to_delete = []
@@ -123,48 +130,76 @@ def remove_empty_texts(node):
         for item in items_to_remove:
             node.remove(item)
 
+# ---
 
 def translate(engine, creds, input_path, output_path, source_lang, target_langs, status_callback=None):
     data = load_json(input_path)
-    remove_empty_texts(data)  # ✅ Clean out empty strings
-    # Preserve original English content for safety
-    original_en = copy.deepcopy(data)
-    # The fix ensures collect_translatable_texts correctly excludes empty strings for 'amazon'
-    texts_to_translate = collect_translatable_texts(data, source_lang, engine=engine)
-
-    if not texts_to_translate:
+    remove_empty_texts(data)  
+    original_en = copy.deepcopy(data) 
+    
+    # 1. Collect ALL translatable texts and their paths
+    all_texts_to_translate = collect_translatable_texts(data, source_lang, engine=engine) 
+    
+    if not all_texts_to_translate:
         if status_callback:
             status_callback("No translatable texts found.", batch_count=0)
         return
 
-    paths, source_texts = zip(*texts_to_translate)
+    all_paths, all_source_texts = zip(*all_texts_to_translate)
     translated_data = copy.deepcopy(data)
+
+    # 2. Filter out empty texts for the API call (avoid Amazon error)
+    paths_for_api = []
+    texts_for_api = []
+    api_map = {} # Maps API path index back to original full paths index
+    
+    for i, (path, text) in enumerate(zip(all_paths, all_source_texts)):
+        # Only use non-empty strings for the API call
+        if text: 
+            paths_for_api.append(path)
+            texts_for_api.append(text)
+            api_map[len(paths_for_api) - 1] = i # Map the API list index back to the full list index
 
     for target_lang in target_langs:
         if status_callback:
             status_callback(f"Translating to {target_lang}...", batch_count=0)
 
-        all_translations = []
+        all_translations = [] # Stores translations for only the texts sent to the API
+        
+        # 3. Perform translation only on non-empty texts
+        if texts_for_api:
+            for i in range(0, len(texts_for_api), BATCH_SIZE):
+                batch_texts = list(texts_for_api[i:i+BATCH_SIZE])
+                
+                if engine == "openai":
+                    batch_translations = openai_translate_batch(creds["openai_key"], batch_texts, source_lang, target_lang)
+                elif engine == "amazon":
+                    batch_translations = amazon_translate_batch(creds["aws_access_key"], creds["aws_secret_key"],
+                                                                 batch_texts, source_lang, target_lang)
+                else:
+                    raise ValueError("Unknown translation engine")
 
-        for i in range(0, len(source_texts), BATCH_SIZE):
-            batch_texts = list(source_texts[i:i+BATCH_SIZE])
-            if engine == "openai":
-                batch_translations = openai_translate_batch(creds["openai_key"], batch_texts, source_lang, target_lang)
-            elif engine == "amazon":
-                batch_translations = amazon_translate_batch(creds["aws_access_key"], creds["aws_secret_key"],
-                                                             batch_texts, source_lang, target_lang)
+                all_translations.extend(batch_translations)
+                if status_callback:
+                    status_callback(f"{len(all_translations)}/{len(texts_for_api)} texts translated for {target_lang}",
+                                     batch_count=len(batch_texts))
+        
+        # 4. Recombine: Build the final list of translations (including empty strings)
+        final_translations = []
+        api_index = 0
+        for text in all_source_texts:
+            if text:
+                # Use the translation from the API
+                final_translations.append(all_translations[api_index])
+                api_index += 1
             else:
-                raise ValueError("Unknown translation engine")
+                # Use an empty string for the target language if source was empty
+                final_translations.append("") 
 
-            all_translations.extend(batch_translations)
-            if status_callback:
-                status_callback(f"{len(all_translations)}/{len(source_texts)} texts translated for {target_lang}",
-                                 batch_count=len(batch_texts))
-
-        # Apply translations back
-        translated_data = apply_translations(translated_data, all_translations, paths, target_lang, source_lang)
-
-        # ✅ FIX #3: Clone additionalContent AFTER translations to correct lang arrays
+        # 5. Apply translations back using ALL paths and the final translations list
+        translated_data = apply_translations(translated_data, final_translations, all_paths, target_lang, source_lang)
+        
+        # FIX #3: Clone additionalContent AFTER translations to correct lang arrays
         def find_and_copy_content(node, source, target):
             if isinstance(node, dict):
                 if "additionalContent" in node and isinstance(node["additionalContent"], dict) and source in node["additionalContent"]:
@@ -178,7 +213,7 @@ def translate(engine, creds, input_path, output_path, source_lang, target_langs,
 
         find_and_copy_content(translated_data, source_lang, target_lang)
 
-        # ✅ Restore original 'en' content to prevent overwriting by last language
+        # Restore original 'en' content
         def restore_original_lang(node, backup, lang):
             if isinstance(node, dict) and isinstance(backup, dict):
                 for k, v in node.items():
