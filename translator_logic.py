@@ -1,5 +1,6 @@
 import json
 import copy
+import os
 from translate_openai import openai_translate_batch, verify_openai_key
 from translate_aws import amazon_translate_batch, verify_aws_credentials
 
@@ -232,4 +233,8 @@ def translate(engine, creds, input_path, output_path, source_lang, target_langs,
 
         restore_original_lang(translated_data, original_en, source_lang)
         remove_empty_texts(translated_data)
-        save_json(translated_data, output_path)
+        
+        #save_json(translated_data, output_path)
+        output_dir = os.path.join(os.path.dirname(output_path), "Non-Blog")
+        os.makedirs(output_dir, exist_ok=True)
+        output_path = os.path.join(output_dir, os.path.basename(output_path))

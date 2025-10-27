@@ -2,10 +2,11 @@ import os
 import threading
 from tkinter import *
 from tkinter import messagebox, filedialog, simpledialog, ttk
-from translator_logic import translate, verify_and_prepare_client, load_json, collect_translatable_texts, save_json
+from translator_logic import verify_and_prepare_client, load_json, collect_translatable_texts
 from credentials_manager import save_credentials, load_credentials
 
 cancel_flag_global = False  # global flag for canceling translation
+
 
 # --------------------------
 # Status Updates & Popup
@@ -19,6 +20,7 @@ def update_status_label(root, status_label, msg, status_text):
         root.messages_text_widget.insert(END, msg + "\n")
         root.messages_text_widget.see(END)
         root.messages_text_widget.config(state=DISABLED)
+
 
 def show_messages_popup(root, messages):
     popup = Toplevel(root)
@@ -36,6 +38,7 @@ def show_messages_popup(root, messages):
         text_widget.insert(END, msg + "\n")
     text_widget.config(state=DISABLED)
 
+
 # --------------------------
 # File Dialog
 # --------------------------
@@ -43,6 +46,7 @@ def browse_file(file_path_var):
     filename = filedialog.askopenfilename(filetypes=[("JSON files", "*.json")])
     if filename:
         file_path_var.set(filename)
+
 
 # --------------------------
 # Credential Dialog
@@ -88,22 +92,33 @@ def get_credentials(root, engine_selection_var):
     else:
         messagebox.showerror("Error", "Unsupported translation engine.")
         return None, None
-    
+
+
 # --------------------------
 # Start/Cancel Button Toggle
 # --------------------------
 def toggle_translation_button(btn, is_running):
     btn.config(text="Cancel Translation" if is_running else "Start Translation")
 
+
 # --------------------------
 # Translation Thread
 # --------------------------
 def run_translation_thread(root, client_or_keys, creds, input_path, output_path, source_lang, target_langs,
-                           status_label, status_text, engine, progress_bar=None, btn=None):
+                           status_label, status_text, engine, progress_bar=None, btn=None, mode="nonblog"):
+    """
+    Worker thread for performing translation, mode-aware (blog/nonblog).
+    """
     global cancel_flag_global
     cancel_flag_global = False
 
     try:
+        # ✅ Dynamically import correct translation logic
+        if mode == "blog":
+            from translator_blog_logic import translate
+        else:
+            from translator_logic import translate
+
         # Count total text entries
         data = load_json(input_path)
         total_texts = len(collect_translatable_texts(data, source_lang)) * len(target_langs)
@@ -137,14 +152,22 @@ def run_translation_thread(root, client_or_keys, creds, input_path, output_path,
             toggle_translation_button(btn, False)
         root.protocol("WM_DELETE_WINDOW", root.quit)
 
+
+# --------------------------
+# Start or Cancel Translation
+# --------------------------
 def start_or_cancel_translation(root, btn, file_path_var, source_lang_entry, target_langs_entry,
-                                engine_var, status_label, status_text, progress_bar):
+                                engine_var, status_label, status_text, progress_bar, mode_var):
+    """
+    Starts or cancels translation based on user interaction.
+    """
     global cancel_flag_global
     if btn.cget("text") == "Start Translation":
         input_path = file_path_var.get()
         source_lang = source_lang_entry.get().strip()
         target_langs = [x.strip() for x in target_langs_entry.get().split(",") if x.strip()]
         engine = engine_var.get()
+        mode = mode_var.get()  # ✅ "blog" or "nonblog"
         folder = os.path.dirname(input_path)
 
         if not os.path.exists(input_path):
@@ -156,14 +179,28 @@ def start_or_cancel_translation(root, btn, file_path_var, source_lang_entry, tar
 
         root.protocol("WM_DELETE_WINDOW", lambda: None)  # disable closing
 
-        #client_or_keys, creds = get_credentials(root, engine_var, folder)
         client_or_keys, creds = get_credentials(root, engine_var)
-
         if not client_or_keys:
             root.protocol("WM_DELETE_WINDOW", root.quit)
             return
 
-        output_path = os.path.splitext(input_path)[0] + "_translated.json"
+        # ✅ Different output filenames per mode
+        #output_path = os.path.splitext(input_path)[0] + f"_{mode}_translated.json"
+
+        # ✅ Organize outputs into folders
+        base_dir = os.path.dirname(input_path)
+        base_name = os.path.basename(input_path)
+
+        if mode == "blog":
+            output_dir = os.path.join(base_dir, "Blog")
+        else:
+            output_dir = os.path.join(base_dir, "Non-Blog")
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        # ✅ Non-blog gets single file, blog creates per language internally
+        output_path = os.path.join(output_dir, base_name if mode == "blog" else base_name.replace(".json", "_translated.json"))
+
 
         toggle_translation_button(btn, True)
         progress_bar["value"] = 0
@@ -173,7 +210,7 @@ def start_or_cancel_translation(root, btn, file_path_var, source_lang_entry, tar
         thread = threading.Thread(
             target=run_translation_thread,
             args=(root, client_or_keys, creds, input_path, output_path, source_lang, target_langs,
-                  status_label, status_text, engine, progress_bar, btn)
+                  status_label, status_text, engine, progress_bar, btn, mode)
         )
         thread.start()
     else:

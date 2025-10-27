@@ -80,6 +80,25 @@ Label(content_frame, text="Translation Engine:").pack(anchor=W, pady=(5,0))
 engine_dropdown = ttk.Combobox(content_frame, textvariable=engine_var, values=["openai", "amazon"], state="readonly")
 engine_dropdown.pack(fill=X)
 
+# ----------------------
+# Mode selection (Blog / Non-Blog)
+# ----------------------
+mode_var = StringVar(value="nonblog")
+
+mode_frame = Frame(content_frame)
+mode_frame.pack(fill=X, pady=(5,5))
+
+Label(mode_frame, text="Mode:").pack(side=LEFT, padx=(0,5))
+mode_toggle = ttk.Checkbutton(
+    mode_frame,
+    text="Blog Mode",
+    variable=mode_var,
+    onvalue="blog",
+    offvalue="nonblog"
+)
+mode_toggle.pack(side=LEFT)
+
+
 # Progress bar
 progress_bar = ttk.Progressbar(content_frame, orient="horizontal", length=400, mode="determinate")
 progress_bar.pack(pady=5)
@@ -90,9 +109,14 @@ status_label.pack()
 
 # Start/Cancel button
 start_btn = Button(content_frame, text="Start Translation", bg="#2e7d32", fg="white", font=("Arial", 12, "bold"),
+                   #command=lambda: start_or_cancel_translation(root, start_btn, file_path, source_lang_entry,
+                   #                                            current_langs_var, engine_var, status_label,
+                   #                                            status_text, progress_bar))
                    command=lambda: start_or_cancel_translation(root, start_btn, file_path, source_lang_entry,
-                                                               current_langs_var, engine_var, status_label,
-                                                               status_text, progress_bar))
+                                            current_langs_var, engine_var, status_label,
+                                            status_text, progress_bar, mode_var))
+
+
 start_btn.pack(pady=10)
 
 # ----------------------
