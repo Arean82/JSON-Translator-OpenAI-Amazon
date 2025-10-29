@@ -1,5 +1,6 @@
-import boto3
+# translate_aws.py
 
+import boto3
 
 def verify_aws_credentials(access_key, secret_key):
     """
