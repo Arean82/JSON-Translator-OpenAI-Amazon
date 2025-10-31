@@ -20,6 +20,18 @@ class EngineSelector:
         self.root.geometry("400x280")
         self.root.resizable(False, False)
         
+        # Center the window properly
+        self.center_window()
+        
+    def center_window(self):
+        """Center the window on screen"""
+        self.root.update_idletasks()
+        width = self.root.winfo_width()
+        height = self.root.winfo_height()
+        x = (self.root.winfo_screenwidth() // 2) - (width // 2)
+        y = (self.root.winfo_screenheight() // 2) - (height // 2)
+        self.root.geometry(f'{width}x{height}+{x}+{y}')
+        
     def create_widgets(self):
         # Header
         Label(self.root, text="Select Translation Engine", font=("Arial", 14, "bold")).pack(pady=15)
@@ -107,31 +119,27 @@ class EngineSelector:
         engine = self.engine_var.get()
         
         try:
-            # Import and launch main window
+            # Import and launch main window in the SAME root window
             from gui.main_window import MainWindow
             from core.translation_engine import TranslationEngine
             
             # Create translation engine
             translation_engine = TranslationEngine()
             
-            # Create new window for main GUI
-            main_root = Toplevel(self.root)
-            main_root.withdraw()  # Hide initially
+            # Clear current window and create main GUI
+            self.clear_window()
             
-            app = MainWindow(main_root, translation_engine, engine)
-            
-            # Center and show
-            main_root.deiconify()
-            self.root.withdraw()  # Hide selector
-            
-            # Handle window close
-            def on_closing():
-                self.root.destroy()
-            
-            main_root.protocol("WM_DELETE_WINDOW", on_closing)
+            app = MainWindow(self.root, translation_engine, engine)
             
         except Exception as e:
             messagebox.showerror("Launch Error", f"Failed to open main GUI:\n{e}")
+            # Recreate the engine selector if main GUI fails
+            self.create_widgets()
+    
+    def clear_window(self):
+        """Clear all widgets from the window"""
+        for widget in self.root.winfo_children():
+            widget.destroy()
 
 def main():
     root = Tk()
@@ -140,5 +148,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    
