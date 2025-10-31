@@ -1,0 +1,66 @@
+{
+  "available_models": {
+    "deepseek-coder-1.3b": {
+      "repo_id": "deepseek-ai/DeepSeek-Coder-1.3b",
+      "description": "1.3B params - Fast, good for translation, runs on CPU",
+      "expected_size": "~2.6GB",
+      "recommended_for": ["translation_cpu", "low_memory"],
+      "parameters": 1300000000,
+      "tags": ["fast", "cpu", "lightweight"]
+    },
+    "deepseek-llm-7b-chat": {
+      "repo_id": "deepseek-ai/DeepSeek-LLM-7B-Chat",
+      "description": "7B params - Better quality, optimized for chat/translation",
+      "expected_size": "~14GB",
+      "recommended_for": ["translation_gpu_8gb", "balanced"],
+      "parameters": 6700000000,
+      "tags": ["balanced", "gpu", "chat"]
+    },
+    "deepseek-coder-v2-base": {
+      "repo_id": "deepseek-ai/DeepSeek-Coder-V2-Lite-Base",
+      "description": "16B params - New V2 model, excellent for translation",
+      "expected_size": "~30GB",
+      "recommended_for": ["translation_gpu_16gb", "high_quality"],
+      "parameters": 16000000000,
+      "tags": ["v2", "high_quality", "gpu"]
+    },
+    "deepseek-coder-v2-instruct": {
+      "repo_id": "deepseek-ai/DeepSeek-Coder-V2-Lite-Instruct",
+      "description": "16B params - V2 model fine-tuned for instructions",
+      "expected_size": "~30GB",
+      "recommended_for": ["translation_gpu_16gb", "best_quality"],
+      "parameters": 16000000000,
+      "tags": ["v2", "instruct", "best_quality"]
+    },
+    "deepseek-llm-67b-chat": {
+      "repo_id": "deepseek-ai/DeepSeek-LLM-67B-Chat",
+      "description": "67B params - High quality, needs 40GB+ VRAM",
+      "expected_size": "~130GB",
+      "recommended_for": ["server", "research"],
+      "parameters": 67000000000,
+      "tags": ["large", "server", "research"]
+    }
+  },
+  "recommendations": {
+    "translation_cpu": ["deepseek-coder-1.3b"],
+    "translation_gpu_8gb": ["deepseek-llm-7b-chat", "deepseek-coder-1.3b"],
+    "translation_gpu_16gb": ["deepseek-coder-v2-base", "deepseek-coder-v2-instruct", "deepseek-llm-7b-chat"],
+    "best_quality": ["deepseek-coder-v2-instruct", "deepseek-llm-67b-chat"],
+    "fastest": ["deepseek-coder-1.3b"],
+    "balanced": ["deepseek-llm-7b-chat"]
+  },
+  "settings": {
+    "default_model": "deepseek-llm-7b-chat",
+    "models_dir": "models",
+    "cache_dir": "model_cache",
+    "device": "auto",
+    "load_in_8bit": true,
+    "load_in_4bit": false,
+    "max_input_length": 2000,
+    "max_new_tokens": 1000,
+    "batch_size": 2,
+    "temperature": 0.3,
+    "top_p": 0.9,
+    "repetition_penalty": 1.1
+  }
+}
